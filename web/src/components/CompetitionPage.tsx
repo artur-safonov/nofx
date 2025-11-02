@@ -12,7 +12,7 @@ export function CompetitionPage() {
     'competition',
     api.getCompetition,
     {
-      refreshInterval: 15000, // 15秒刷新（竞赛数据不需要太频繁更新）
+      refreshInterval: 15000, // 15s refresh (competition data doesn't need frequent updates)
       revalidateOnFocus: false,
       dedupingInterval: 10000,
     }
@@ -41,17 +41,17 @@ export function CompetitionPage() {
     );
   }
 
-  // 按收益率排序
+  // Sort by return rate
   const sortedTraders = [...competition.traders].sort(
     (a, b) => b.total_pnl_pct - a.total_pnl_pct
   );
 
-  // 找出领先者
+  // Find the leader
   const leader = sortedTraders[0];
 
   return (
     <div className="space-y-5 animate-fade-in">
-      {/* Competition Header - 精简版 */}
+      {/* Competition Header - Simplified */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl" style={{

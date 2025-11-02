@@ -20,9 +20,9 @@ type Page = 'competition' | 'trader';
 function App() {
   const { language, setLanguage } = useLanguage();
 
-  // 从URL hash读取初始页面状态（支持刷新保持页面）
+  // Read initial page state from URL hash (supports page persistence on refresh)
   const getInitialPage = (): Page => {
-    const hash = window.location.hash.slice(1); // 去掉 #
+    const hash = window.location.hash.slice(1); // Remove #
     return hash === 'trader' || hash === 'details' ? 'trader' : 'competition';
   };
 
@@ -30,7 +30,7 @@ function App() {
   const [selectedTraderId, setSelectedTraderId] = useState<string | undefined>();
   const [lastUpdate, setLastUpdate] = useState<string>('--:--:--');
 
-  // 监听URL hash变化，同步页面状态
+  // Monitor URL hash changes to sync page state
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.slice(1);
@@ -45,34 +45,34 @@ function App() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  // 切换页面时更新URL hash
+  // Update URL hash when switching pages
   const navigateToPage = (page: Page) => {
     setCurrentPage(page);
     window.location.hash = page === 'competition' ? '' : 'trader';
   };
 
-  // 获取trader列表
+  // Get trader list
   const { data: traders } = useSWR<TraderInfo[]>('traders', api.getTraders, {
     refreshInterval: 10000,
   });
 
-  // 当获取到traders后，设置默认选中第一个
+  // Set default selected trader when traders are loaded
   useEffect(() => {
     if (traders && traders.length > 0 && !selectedTraderId) {
       setSelectedTraderId(traders[0].trader_id);
     }
   }, [traders, selectedTraderId]);
 
-  // 如果在trader页面，获取该trader的数据
+  // Get trader data if on trader page
   const { data: status } = useSWR<SystemStatus>(
     currentPage === 'trader' && selectedTraderId
       ? `status-${selectedTraderId}`
       : null,
     () => api.getStatus(selectedTraderId),
     {
-      refreshInterval: 15000, // 15秒刷新（配合后端15秒缓存）
-      revalidateOnFocus: false, // 禁用聚焦时重新验证，减少请求
-      dedupingInterval: 10000, // 10秒去重，防止短时间内重复请求
+      refreshInterval: 15000, // 15s refresh (matching backend 15s cache)
+      revalidateOnFocus: false, // Disable revalidation on focus to reduce requests
+      dedupingInterval: 10000, // 10s deduplication to prevent duplicate requests
     }
   );
 
@@ -82,9 +82,9 @@ function App() {
       : null,
     () => api.getAccount(selectedTraderId),
     {
-      refreshInterval: 15000, // 15秒刷新（配合后端15秒缓存）
-      revalidateOnFocus: false, // 禁用聚焦时重新验证，减少请求
-      dedupingInterval: 10000, // 10秒去重，防止短时间内重复请求
+      refreshInterval: 15000, // 15s refresh (matching backend 15s cache)
+      revalidateOnFocus: false, // Disable revalidation on focus to reduce requests
+      dedupingInterval: 10000, // 10s deduplication to prevent duplicate requests
     }
   );
 
@@ -94,9 +94,9 @@ function App() {
       : null,
     () => api.getPositions(selectedTraderId),
     {
-      refreshInterval: 15000, // 15秒刷新（配合后端15秒缓存）
-      revalidateOnFocus: false, // 禁用聚焦时重新验证，减少请求
-      dedupingInterval: 10000, // 10秒去重，防止短时间内重复请求
+      refreshInterval: 15000, // 15s refresh (matching backend 15s cache)
+      revalidateOnFocus: false, // Disable revalidation on focus to reduce requests
+      dedupingInterval: 10000, // 10s deduplication to prevent duplicate requests
     }
   );
 
@@ -106,7 +106,7 @@ function App() {
       : null,
     () => api.getLatestDecisions(selectedTraderId),
     {
-      refreshInterval: 30000, // 30秒刷新（决策更新频率较低）
+      refreshInterval: 30000, // 30s refresh (decisions update less frequently)
       revalidateOnFocus: false,
       dedupingInterval: 20000,
     }
@@ -118,7 +118,7 @@ function App() {
       : null,
     () => api.getStatistics(selectedTraderId),
     {
-      refreshInterval: 30000, // 30秒刷新（统计数据更新频率较低）
+      refreshInterval: 30000, // 30s refresh (statistics update less frequently)
       revalidateOnFocus: false,
       dedupingInterval: 20000,
     }
@@ -428,9 +428,9 @@ function TraderDetailsPage({
         />
       </div>
 
-      {/* 主要内容区：左右分屏 */}
+      {/* Main content area: left-right split */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        {/* 左侧：图表 + 持仓 */}
+        {/* Left: Chart + Positions */}
         <div className="space-y-6">
           {/* Equity Chart */}
           <div className="animate-slide-in" style={{ animationDelay: '0.1s' }}>
@@ -512,11 +512,11 @@ function TraderDetailsPage({
         )}
           </div>
         </div>
-        {/* 左侧结束 */}
+        {/* Left section end */}
 
-        {/* 右侧：Recent Decisions - 卡片容器 */}
+        {/* Right: Recent Decisions - Card container */}
         <div className="binance-card p-6 animate-slide-in h-fit lg:sticky lg:top-24 lg:max-h-[calc(100vh-120px)]" style={{ animationDelay: '0.2s' }}>
-          {/* 标题 */}
+          {/* Title */}
           <div className="flex items-center gap-3 mb-5 pb-4 border-b" style={{ borderColor: '#2B3139' }}>
             <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{
               background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
@@ -534,7 +534,7 @@ function TraderDetailsPage({
             </div>
           </div>
 
-          {/* 决策列表 - 可滚动 */}
+          {/* Decision list - Scrollable */}
           <div className="space-y-4 overflow-y-auto pr-2" style={{ maxHeight: 'calc(100vh - 280px)' }}>
             {decisions && decisions.length > 0 ? (
               decisions.map((decision, i) => (
@@ -549,7 +549,7 @@ function TraderDetailsPage({
             )}
           </div>
         </div>
-        {/* 右侧结束 */}
+        {/* Right section end */}
       </div>
 
       {/* AI Learning & Performance Analysis */}
@@ -689,10 +689,10 @@ function DecisionCard({ decision, language }: { decision: DecisionRecord; langua
       {/* Account State Summary */}
       {decision.account_state && (
         <div className="flex gap-4 text-xs mb-3 rounded px-3 py-2" style={{ background: '#0B0E11', color: '#848E9C' }}>
-          <span>净值: {decision.account_state.total_balance.toFixed(2)} USDT</span>
-          <span>可用: {decision.account_state.available_balance.toFixed(2)} USDT</span>
-          <span>保证金率: {decision.account_state.margin_used_pct.toFixed(1)}%</span>
-          <span>持仓: {decision.account_state.position_count}</span>
+          <span>{t('equityLabel', language)}: {decision.account_state.total_balance.toFixed(2)} USDT</span>
+          <span>{t('availableLabel', language)}: {decision.account_state.available_balance.toFixed(2)} USDT</span>
+          <span>{t('marginRateLabel', language)}: {decision.account_state.margin_used_pct.toFixed(1)}%</span>
+          <span>{t('positionsLabel', language)}: {decision.account_state.position_count}</span>
         </div>
       )}
 
@@ -703,7 +703,7 @@ function DecisionCard({ decision, language }: { decision: DecisionRecord; langua
             <div
               key={k}
               className="text-xs font-mono"
-              style={{ color: log.includes('✓') || log.includes('成功') ? '#0ECB81' : '#F6465D' }}
+              style={{ color: log.includes('✓') || log.includes(t('successChar', language)) ? '#0ECB81' : '#F6465D' }}
             >
               {log}
             </div>
