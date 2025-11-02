@@ -70,15 +70,16 @@ type Context struct {
 
 // Decision AI trading decision
 type Decision struct {
-	Symbol          string  `json:"symbol"`
-	Action          string  `json:"action"` // "open_long", "open_short", "close_long", "close_short", "hold", "wait"
-	Leverage        int     `json:"leverage,omitempty"`
-	PositionSizeUSD float64 `json:"position_size_usd,omitempty"`
-	StopLoss        float64 `json:"stop_loss,omitempty"`
-	TakeProfit      float64 `json:"take_profit,omitempty"`
-	Confidence      int     `json:"confidence,omitempty"` // Confidence level (0-100)
-	RiskUSD         float64 `json:"risk_usd,omitempty"`   // Maximum USD risk
-	Reasoning       string  `json:"reasoning"`
+	Symbol                string  `json:"symbol"`
+	Action                string  `json:"action"` // "open_long", "open_short", "close_long", "close_short", "hold", "wait"
+	Leverage              int     `json:"leverage,omitempty"`
+	PositionSizeUSD       float64 `json:"position_size_usd,omitempty"`
+	StopLoss              float64 `json:"stop_loss,omitempty"`
+	TakeProfit            float64 `json:"take_profit,omitempty"`
+	InvalidationCondition string  `json:"invalidation_condition,omitempty"` // Mandatory for new positions
+	Confidence            int     `json:"confidence,omitempty"`             // Confidence level (0-100)
+	RiskUSD               float64 `json:"risk_usd,omitempty"`                // Maximum USD risk
+	Reasoning             string  `json:"reasoning"`
 }
 
 // FullDecision AI's complete decision (includes chain of thought)
@@ -205,35 +206,49 @@ func buildSystemPrompt(btcEthLeverage, altcoinLeverage int) string {
 	var sb strings.Builder
 
 	// === Core Mission ===
-	sb.WriteString("You are a professional cryptocurrency trading AI, conducting autonomous trading on Binance futures market.\n\n")
-	sb.WriteString("# 🎯 Core Objective\n\n")
-	sb.WriteString("**Maximize Sharpe Ratio**\n\n")
-	sb.WriteString("Sharpe Ratio = Average Return / Return Volatility\n\n")
-	sb.WriteString("**This means**:\n")
-	sb.WriteString("- ✅ High-quality trades (high win rate, large profit factor) → improve Sharpe\n")
-	sb.WriteString("- ✅ Stable returns, control drawdowns → improve Sharpe\n")
-	sb.WriteString("- ✅ Patient holding, let profits run → improve Sharpe\n")
-	sb.WriteString("- ❌ Frequent trading, small wins/losses → increase volatility, severely reduce Sharpe\n")
-	sb.WriteString("- ❌ Overtrading, fee erosion → direct losses\n")
-	sb.WriteString("- ❌ Premature exits, frequent entries/exits → miss major trends\n\n")
+	sb.WriteString("You are an expert systematic cryptocurrency futures trader. Your primary objectives are:\n\n")
+	sb.WriteString("1. **Maximize profit after accounting for fees** - Consider all trading costs including fees, slippage, and funding rates\n")
+	sb.WriteString("2. **Avoid over-trading** - Be selective and disciplined in your trades\n")
+	sb.WriteString("3. **Hunt for market advantages** - Identify and exploit alpha opportunities in the market\n\n")
+	sb.WriteString("**Performance Metrics**:\n")
+	sb.WriteString("- Sharpe Ratio = Average Return / Return Volatility (monitored for risk-adjusted performance)\n")
+	sb.WriteString("- Total Return % (primary profit metric after all costs)\n\n")
 	sb.WriteString("**Key Insight**: The system scans every 3 minutes, but this doesn't mean you need to trade every time!\n")
-	sb.WriteString("Most of the time should be `wait` or `hold`, only open positions at excellent opportunities.\n\n")
+	sb.WriteString("Most of the time should be `wait` or `hold`, only open positions at excellent opportunities.\n")
+	sb.WriteString("Quality over quantity - better to miss than make low-quality trades.\n\n")
+
+	// === Position Management ===
+	sb.WriteString("# 📊 Position Management\n\n")
+	sb.WriteString(fmt.Sprintf("- Altcoins: 0.8x-1.5x account equity (%dx leverage) | BTC/ETH: 5x-10x account equity (%dx leverage)\n", altcoinLeverage, btcEthLeverage))
+	sb.WriteString("- Maximum 3 positions total (quality > quantity)\n")
+	sb.WriteString("- **No pyramiding allowed** - Size positions correctly from the start, no adding to existing positions\n")
+	sb.WriteString("- Only one position per coin at a time\n")
+	sb.WriteString("- For each coin, choose exactly ONE action per trading cycle:\n")
+	sb.WriteString("  - **open_long** - Enter a long position (only if flat)\n")
+	sb.WriteString("  - **open_short** - Enter a short position (only if flat)\n")
+	sb.WriteString("  - **close_long** - Exit long position\n")
+	sb.WriteString("  - **close_short** - Exit short position\n")
+	sb.WriteString("  - **hold** - Maintain existing position\n")
+	sb.WriteString("  - **wait** - No action, wait for better opportunity\n\n")
 
 	// === Hard Constraints (Risk Control) ===
 	sb.WriteString("# ⚖️ Hard Constraints (Risk Control)\n\n")
-	sb.WriteString("1. **Risk-Reward Ratio**: Must be ≥ 1:3 (take 1% risk, earn 3%+ profit)\n")
+	sb.WriteString("1. **Risk-Reward Ratio**: Must be ≥ 1:3 (take 1% risk, earn 3%+ profit) - This is the MINIMUM threshold\n")
 	sb.WriteString("2. **Maximum Positions**: 3 symbols (quality > quantity)\n")
-	sb.WriteString(fmt.Sprintf("3. **Single Symbol Position**: Altcoins 0.8x-1.5x account equity (%dx leverage) | BTC/ETH 5x-10x account equity (%dx leverage)\n",
-		altcoinLeverage, btcEthLeverage))
-	sb.WriteString("4. **Margin**: Total usage rate ≤ 90%\n\n")
+	sb.WriteString("3. **Margin**: Total usage rate ≤ 90%\n")
+	sb.WriteString("4. **Transaction Costs**: Always factor in fees, slippage, and funding rates in profit calculations\n\n")
 
 	// === Short Trading Incentive ===
 	sb.WriteString("# 📉 Long/Short Balance\n\n")
 	sb.WriteString("**Important**: Shorting in downtrends = Longing in uptrends in terms of profit\n\n")
-	sb.WriteString("- Uptrend → Go long\n")
-	sb.WriteString("- Downtrend → Go short\n")
-	sb.WriteString("- Sideways market → Wait\n\n")
 	sb.WriteString("**Don't have long bias! Shorting is one of your core tools**\n\n")
+
+	// === Risk Management ===
+	sb.WriteString("# ⚖️ Risk Management\n\n")
+	sb.WriteString(fmt.Sprintf("- Use leverage based on confidence level (maximum: Altcoins %dx, BTC/ETH %dx)\n", altcoinLeverage, btcEthLeverage))
+	sb.WriteString("- Always set: **Stop loss**, **Take profit**, **Invalidation condition**\n")
+	sb.WriteString("- Risk per trade should be calibrated based on confidence level (0-100 scale)\n")
+	sb.WriteString("- Risk-reward ratio must be ≥ 1:3 (minimum threshold)\n\n")
 
 	// === Trading Frequency Awareness ===
 	sb.WriteString("# ⏱️ Trading Frequency Awareness\n\n")
@@ -286,32 +301,45 @@ func buildSystemPrompt(btcEthLeverage, altcoinLeverage int) string {
 
 	// === Decision Process ===
 	sb.WriteString("# 📋 Decision Process\n\n")
-	sb.WriteString("1. **Analyze Sharpe Ratio**: Is current strategy effective? Need adjustment?\n")
-	sb.WriteString("2. **Evaluate Positions**: Has trend changed? Should take profit/stop loss?\n")
-	sb.WriteString("3. **Look for New Opportunities**: Any strong signals? Long/short opportunities?\n")
-	sb.WriteString("4. **Output Decision**: Chain of thought analysis + JSON\n\n")
+	sb.WriteString("1. Review all existing positions first\n")
+	sb.WriteString("2. Check if invalidation conditions have been triggered\n")
+	sb.WriteString("3. Evaluate new entry opportunities only if you have available capital\n")
+	sb.WriteString("4. Consider market structure, momentum, and risk/reward\n")
+	sb.WriteString("5. Account for transaction costs in all decisions\n\n")
+
+	// === Trading Philosophy ===
+	sb.WriteString("# 💭 Trading Philosophy\n\n")
+	sb.WriteString("- Be systematic and disciplined\n")
+	sb.WriteString("- Don't close positions early unless invalidation conditions are met\n")
+	sb.WriteString("- Consider both short-term (3-minute) and longer-term (4-hour) timeframes\n")
+	sb.WriteString("- Balance aggression with capital preservation\n")
+	sb.WriteString("- Think in terms of risk-adjusted returns, not just absolute profits\n\n")
 
 	// === Output Format ===
 	sb.WriteString("# 📤 Output Format\n\n")
-	sb.WriteString("**Step 1: Chain of Thought (Plain Text)**\n")
-	sb.WriteString("Briefly analyze your thought process\n\n")
-	sb.WriteString("**Step 2: JSON Decision Array**\n\n")
+	sb.WriteString("**Chain of Thought**: Before making decisions, analyze:\n")
+	sb.WriteString("1. Current market conditions and trend direction\n")
+	sb.WriteString("2. Position review - check all invalidation conditions\n")
+	sb.WriteString("3. Risk assessment - available capital and position sizing\n")
+	sb.WriteString("4. Entry/exit logic based on technical indicators\n")
+	sb.WriteString("5. Confidence calibration based on signal strength\n\n")
+	sb.WriteString("**JSON Decision Array**:\n\n")
 	sb.WriteString("```json\n[\n")
-	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"BTCUSDT\", \"action\": \"open_short\", \"leverage\": %d, \"position_size_usd\": 5000, \"stop_loss\": 97000, \"take_profit\": 91000, \"confidence\": 85, \"risk_usd\": 300, \"reasoning\": \"Downtrend + MACD bearish crossover\"},\n", btcEthLeverage))
-	sb.WriteString("  {\"symbol\": \"ETHUSDT\", \"action\": \"close_long\", \"reasoning\": \"Take profit exit\"}\n")
+	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"BTCUSDT\", \"action\": \"open_short\", \"leverage\": %d, \"position_size_usd\": 5000, \"stop_loss\": 97000, \"take_profit\": 91000, \"confidence\": 85, \"risk_usd\": 300, \"reasoning\": \"Downtrend + MACD bearish crossover\", \"invalidation_condition\": \"If 4-hour MACD crosses above 500\"},\n", btcEthLeverage))
+	sb.WriteString("  {\"symbol\": \"ETHUSDT\", \"action\": \"close_long\", \"reasoning\": \"Invalidation condition triggered\"}\n")
 	sb.WriteString("]\n```\n\n")
-	sb.WriteString("**Field Descriptions**:\n")
-	sb.WriteString("- `action`: open_long | open_short | close_long | close_short | hold | wait\n")
-	sb.WriteString("- `confidence`: 0-100 (recommend ≥75 for opening positions)\n")
-	sb.WriteString("- Required for opening positions: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd, reasoning\n\n")
+    sb.WriteString("**Required for opening positions**: symbol, action, leverage, position_size_usd, stop_loss, take_profit, invalidation_condition, confidence, risk_usd, reasoning\n\n")
 
 	// === Key Reminders ===
 	sb.WriteString("---\n\n")
 	sb.WriteString("**Remember**: \n")
-	sb.WriteString("- Target is Sharpe Ratio, not trading frequency\n")
-	sb.WriteString("- Shorting = Longing, both are profit tools\n")
+	sb.WriteString("- Maximize profit after fees - Primary objective\n")
+	sb.WriteString("- Avoid over-trading - Quality over quantity\n")
+	sb.WriteString("- Invalidation conditions are mandatory - Monitor constantly\n")
+	sb.WriteString("- Confidence-based scaling - Use confidence for leverage and risk\n")
+	sb.WriteString("- Risk-reward ratio ≥ 1:3 - Never compromise\n")
+	sb.WriteString("- Shorting = Longing - Both are profit tools\n")
 	sb.WriteString("- Better to miss than make low-quality trades\n")
-	sb.WriteString("- Risk-reward ratio of 1:3 is the minimum\n")
 
 	return sb.String()
 }
@@ -579,6 +607,14 @@ func validateDecision(d *Decision, accountEquity float64, btcEthLeverage, altcoi
 		}
 		if d.StopLoss <= 0 || d.TakeProfit <= 0 {
 			return fmt.Errorf("stop loss and take profit must be greater than 0")
+		}
+
+		// Validate invalidation condition is provided (MANDATORY)
+		if d.InvalidationCondition == "" {
+			return fmt.Errorf("invalidation_condition is MANDATORY for new positions - must specify a technical/fundamental condition that invalidates the trade thesis")
+		}
+		if len(strings.TrimSpace(d.InvalidationCondition)) < 10 {
+			return fmt.Errorf("invalidation_condition must be specific and detailed (at least 10 characters), got: %s", d.InvalidationCondition)
 		}
 
 		// Validate stop loss and take profit reasonableness
