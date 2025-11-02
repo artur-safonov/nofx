@@ -96,8 +96,8 @@ func GetFullDecision(ctx *Context, mcpClient *mcp.Client) (*FullDecision, error)
 		return nil, fmt.Errorf("failed to fetch market data: %w", err)
 	}
 
-	// 2. Build System Prompt (fixed rules) and User Prompt (dynamic data)
-	systemPrompt := buildSystemPrompt(ctx.Account.TotalEquity, ctx.BTCETHLeverage, ctx.AltcoinLeverage)
+	// 2. Build System Prompt (fixed rules, can be cached) and User Prompt (dynamic data)
+	systemPrompt := buildSystemPrompt(ctx.BTCETHLeverage, ctx.AltcoinLeverage)
 	userPrompt := buildUserPrompt(ctx)
 
 	// 3. Call AI API (using system + user prompt)
@@ -200,7 +200,8 @@ func calculateMaxCandidates(ctx *Context) int {
 }
 
 // buildSystemPrompt Build System Prompt (fixed rules, can be cached)
-func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage int) string {
+// Note: accountEquity is NOT included here to enable prompt caching - it changes during runtime
+func buildSystemPrompt(btcEthLeverage, altcoinLeverage int) string {
 	var sb strings.Builder
 
 	// === Core Mission ===
@@ -222,8 +223,8 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 	sb.WriteString("# ⚖️ Hard Constraints (Risk Control)\n\n")
 	sb.WriteString("1. **Risk-Reward Ratio**: Must be ≥ 1:3 (take 1% risk, earn 3%+ profit)\n")
 	sb.WriteString("2. **Maximum Positions**: 3 symbols (quality > quantity)\n")
-	sb.WriteString(fmt.Sprintf("3. **Single Symbol Position**: Altcoins %.0f-%.0f USDT (%dx leverage) | BTC/ETH %.0f-%.0f USDT (%dx leverage)\n",
-		accountEquity*0.8, accountEquity*1.5, altcoinLeverage, accountEquity*5, accountEquity*10, btcEthLeverage))
+	sb.WriteString(fmt.Sprintf("3. **Single Symbol Position**: Altcoins 0.8x-1.5x account equity (%dx leverage) | BTC/ETH 5x-10x account equity (%dx leverage)\n",
+		altcoinLeverage, btcEthLeverage))
 	sb.WriteString("4. **Margin**: Total usage rate ≤ 90%\n\n")
 
 	// === Short Trading Incentive ===
@@ -296,7 +297,7 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 	sb.WriteString("Briefly analyze your thought process\n\n")
 	sb.WriteString("**Step 2: JSON Decision Array**\n\n")
 	sb.WriteString("```json\n[\n")
-	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"BTCUSDT\", \"action\": \"open_short\", \"leverage\": %d, \"position_size_usd\": %.0f, \"stop_loss\": 97000, \"take_profit\": 91000, \"confidence\": 85, \"risk_usd\": 300, \"reasoning\": \"Downtrend + MACD bearish crossover\"},\n", btcEthLeverage, accountEquity*5))
+	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"BTCUSDT\", \"action\": \"open_short\", \"leverage\": %d, \"position_size_usd\": 5000, \"stop_loss\": 97000, \"take_profit\": 91000, \"confidence\": 85, \"risk_usd\": 300, \"reasoning\": \"Downtrend + MACD bearish crossover\"},\n", btcEthLeverage))
 	sb.WriteString("  {\"symbol\": \"ETHUSDT\", \"action\": \"close_long\", \"reasoning\": \"Take profit exit\"}\n")
 	sb.WriteString("]\n```\n\n")
 	sb.WriteString("**Field Descriptions**:\n")
@@ -338,6 +339,11 @@ func buildUserPrompt(ctx *Context) string {
 		ctx.Account.TotalPnLPct,
 		ctx.Account.MarginUsedPct,
 		ctx.Account.PositionCount))
+	
+	// Position size limits (based on current account equity)
+	sb.WriteString(fmt.Sprintf("**Position Size Limits**: Altcoins %.0f-%.0f USDT (%dx leverage) | BTC/ETH %.0f-%.0f USDT (%dx leverage)\n\n",
+		ctx.Account.TotalEquity*0.8, ctx.Account.TotalEquity*1.5, ctx.AltcoinLeverage,
+		ctx.Account.TotalEquity*5, ctx.Account.TotalEquity*10, ctx.BTCETHLeverage))
 
 	// Positions (complete market data)
 	if len(ctx.Positions) > 0 {
