@@ -20,27 +20,27 @@ interface ComparisonChartProps {
 }
 
 export function ComparisonChart({ traders }: ComparisonChartProps) {
-  // 获取所有trader的历史数据 - 使用单个useSWR并发请求所有trader数据
-  // 生成唯一的key，当traders变化时会触发重新请求
+  // Get all trader historical data - Use single useSWR to concurrently request all trader data
+  // Generate unique key that triggers re-request when traders change
   const tradersKey = traders.map(t => t.trader_id).sort().join(',');
 
   const { data: allTraderHistories, isLoading } = useSWR(
     traders.length > 0 ? `all-equity-histories-${tradersKey}` : null,
     async () => {
-      // 并发请求所有trader的历史数据
+      // Concurrently request all trader historical data
       const promises = traders.map(trader =>
         api.getEquityHistory(trader.trader_id)
       );
       return Promise.all(promises);
     },
     {
-      refreshInterval: 30000, // 30秒刷新（对比图表数据更新频率较低）
+      refreshInterval: 30000, // 30s refresh (comparison chart data updates less frequently)
       revalidateOnFocus: false,
       dedupingInterval: 20000,
     }
   );
 
-  // 将数据转换为与原格式兼容的结构
+  // Convert data to structure compatible with original format
   const traderHistories = useMemo(() => {
     if (!allTraderHistories) {
       return traders.map(() => ({ data: undefined }));
@@ -48,16 +48,16 @@ export function ComparisonChart({ traders }: ComparisonChartProps) {
     return allTraderHistories.map(data => ({ data }));
   }, [allTraderHistories, traders.length]);
 
-  // 使用useMemo自动处理数据合并，直接使用data对象作为依赖
+  // Use useMemo to automatically handle data merging, directly use data object as dependency
   const combinedData = useMemo(() => {
-    // 等待所有数据加载完成
+    // Wait for all data to load
     const allLoaded = traderHistories.every((h) => h.data);
     if (!allLoaded) return [];
 
     console.log(`[${new Date().toISOString()}] Recalculating chart data...`);
 
-    // 新方案：按时间戳分组，不再依赖 cycle_number（因为后端会重置）
-    // 收集所有时间戳
+    // New approach: Group by timestamp, no longer depend on cycle_number (backend resets it)
+    // Collect all timestamps
     const timestampMap = new Map<string, {
       timestamp: string;
       time: string;
@@ -74,7 +74,7 @@ export function ComparisonChart({ traders }: ComparisonChartProps) {
         const ts = point.timestamp;
 
         if (!timestampMap.has(ts)) {
-          const time = new Date(ts).toLocaleTimeString('zh-CN', {
+          const time = new Date(ts).toLocaleTimeString('en-US', {
             hour: '2-digit',
             minute: '2-digit',
           });
@@ -92,12 +92,12 @@ export function ComparisonChart({ traders }: ComparisonChartProps) {
       });
     });
 
-    // 按时间戳排序，转换为数组
+    // Sort by timestamp, convert to array
     const combined = Array.from(timestampMap.entries())
       .sort(([tsA], [tsB]) => new Date(tsA).getTime() - new Date(tsB).getTime())
       .map(([ts, data], index) => {
         const entry: any = {
-          index: index + 1,  // 使用序号代替cycle
+          index: index + 1,  // Use sequence number instead of cycle
           time: data.time,
           timestamp: ts
         };
@@ -140,20 +140,20 @@ export function ComparisonChart({ traders }: ComparisonChartProps) {
     return (
       <div className="text-center py-16" style={{ color: '#848E9C' }}>
         <div className="text-6xl mb-4 opacity-50">📊</div>
-        <div className="text-lg font-semibold mb-2">暂无历史数据</div>
-        <div className="text-sm">运行几个周期后将显示对比曲线</div>
+        <div className="text-lg font-semibold mb-2">No Historical Data</div>
+        <div className="text-sm">Comparison curves will appear after running a few cycles</div>
       </div>
     );
   }
 
-  // 限制显示数据点
+  // Limit displayed data points
   const MAX_DISPLAY_POINTS = 2000;
   const displayData =
     combinedData.length > MAX_DISPLAY_POINTS
       ? combinedData.slice(-MAX_DISPLAY_POINTS)
       : combinedData;
 
-  // 计算Y轴范围
+  // Calculate Y-axis range
   const calculateYDomain = () => {
     const allValues: number[] = [];
     displayData.forEach((point) => {
@@ -170,7 +170,7 @@ export function ComparisonChart({ traders }: ComparisonChartProps) {
     const minVal = Math.min(...allValues);
     const maxVal = Math.max(...allValues);
     const range = Math.max(Math.abs(maxVal), Math.abs(minVal));
-    const padding = Math.max(range * 0.2, 1); // 至少留1%余量
+    const padding = Math.max(range * 0.2, 1); // Leave at least 1% margin
 
     return [
       Math.floor(minVal - padding),
@@ -178,10 +178,10 @@ export function ComparisonChart({ traders }: ComparisonChartProps) {
     ];
   };
 
-  // 使用统一的颜色分配逻辑（与Leaderboard保持一致）
+  // Use unified color allocation logic (consistent with Leaderboard)
   const traderColor = (traderId: string) => getTraderColor(traders, traderId);
 
-  // 自定义Tooltip - Binance Style
+  // Custom Tooltip - Binance Style
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
@@ -218,7 +218,7 @@ export function ComparisonChart({ traders }: ComparisonChartProps) {
     return null;
   };
 
-  // 计算当前差距
+  // Calculate current gap
   const currentGap = displayData.length > 0 ? (() => {
     const lastPoint = displayData[displayData.length - 1];
     const values = traders.map(t => lastPoint[`${t.trader_id}_pnl_pct`] || 0);
@@ -317,25 +317,25 @@ export function ComparisonChart({ traders }: ComparisonChartProps) {
       {/* Stats */}
       <div className="mt-6 grid grid-cols-4 gap-4 pt-5" style={{ borderTop: '1px solid #2B3139' }}>
         <div className="p-3 rounded transition-all hover:bg-opacity-50" style={{ background: 'rgba(240, 185, 11, 0.05)' }}>
-          <div className="text-xs mb-1 uppercase tracking-wider" style={{ color: '#848E9C' }}>对比模式</div>
+          <div className="text-xs mb-1 uppercase tracking-wider" style={{ color: '#848E9C' }}>Comparison Mode</div>
           <div className="text-base font-bold" style={{ color: '#EAECEF' }}>PnL %</div>
         </div>
         <div className="p-3 rounded transition-all hover:bg-opacity-50" style={{ background: 'rgba(240, 185, 11, 0.05)' }}>
-          <div className="text-xs mb-1 uppercase tracking-wider" style={{ color: '#848E9C' }}>数据点数</div>
-          <div className="text-base font-bold mono" style={{ color: '#EAECEF' }}>{combinedData.length} 个</div>
+          <div className="text-xs mb-1 uppercase tracking-wider" style={{ color: '#848E9C' }}>Data Points</div>
+          <div className="text-base font-bold mono" style={{ color: '#EAECEF' }}>{combinedData.length} points</div>
         </div>
         <div className="p-3 rounded transition-all hover:bg-opacity-50" style={{ background: 'rgba(240, 185, 11, 0.05)' }}>
-          <div className="text-xs mb-1 uppercase tracking-wider" style={{ color: '#848E9C' }}>当前差距</div>
+          <div className="text-xs mb-1 uppercase tracking-wider" style={{ color: '#848E9C' }}>Current Gap</div>
           <div className="text-base font-bold mono" style={{ color: currentGap > 1 ? '#F0B90B' : '#EAECEF' }}>
             {currentGap.toFixed(2)}%
           </div>
         </div>
         <div className="p-3 rounded transition-all hover:bg-opacity-50" style={{ background: 'rgba(240, 185, 11, 0.05)' }}>
-          <div className="text-xs mb-1 uppercase tracking-wider" style={{ color: '#848E9C' }}>显示范围</div>
+          <div className="text-xs mb-1 uppercase tracking-wider" style={{ color: '#848E9C' }}>Display Range</div>
           <div className="text-base font-bold mono" style={{ color: '#EAECEF' }}>
             {combinedData.length > MAX_DISPLAY_POINTS
-              ? `最近 ${MAX_DISPLAY_POINTS}`
-              : '全部数据'}
+              ? `Recent ${MAX_DISPLAY_POINTS}`
+              : 'All Data'}
           </div>
         </div>
       </div>

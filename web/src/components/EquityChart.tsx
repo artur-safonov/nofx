@@ -34,7 +34,7 @@ export function EquityChart({ traderId }: EquityChartProps) {
     traderId ? `equity-history-${traderId}` : 'equity-history',
     () => api.getEquityHistory(traderId),
     {
-      refreshInterval: 30000, // 30秒刷新（历史数据更新频率较低）
+      refreshInterval: 30000, // 30s refresh (historical data updates less frequently)
       revalidateOnFocus: false,
       dedupingInterval: 20000,
     }
@@ -44,7 +44,7 @@ export function EquityChart({ traderId }: EquityChartProps) {
     traderId ? `account-${traderId}` : 'account',
     () => api.getAccount(traderId),
     {
-      refreshInterval: 15000, // 15秒刷新（配合后端缓存）
+      refreshInterval: 15000, // 15s refresh (matching backend cache)
       revalidateOnFocus: false,
       dedupingInterval: 10000,
     }
@@ -64,7 +64,7 @@ export function EquityChart({ traderId }: EquityChartProps) {
     );
   }
 
-  // 过滤掉无效数据：total_equity为0或小于1的数据点（API失败导致）
+  // Filter out invalid data: points with total_equity 0 or less than 1 (caused by API failures)
   const validHistory = history?.filter(point => point.total_equity > 1) || [];
 
   if (!validHistory || validHistory.length === 0) {
@@ -80,24 +80,24 @@ export function EquityChart({ traderId }: EquityChartProps) {
     );
   }
 
-  // 限制显示最近的数据点（性能优化）
-  // 如果数据超过2000个点，只显示最近2000个
+  // Limit displayed recent data points (performance optimization)
+  // If data exceeds 2000 points, only show the most recent 2000
   const MAX_DISPLAY_POINTS = 2000;
   const displayHistory = validHistory.length > MAX_DISPLAY_POINTS
     ? validHistory.slice(-MAX_DISPLAY_POINTS)
     : validHistory;
 
-  // 计算初始余额（使用第一个有效数据点，如果无数据则从account获取，最后才用默认值）
+  // Calculate initial balance (use first valid data point, if no data then from account, default last)
   const initialBalance = validHistory[0]?.total_equity
     || account?.total_equity
-    || 100;  // 默认值改为100，与常见配置一致
+    || 100;  // Default value set to 100, consistent with common configuration
 
-  // 转换数据格式
+  // Convert data format
   const chartData = displayHistory.map((point) => {
     const pnl = point.total_equity - initialBalance;
     const pnlPct = ((pnl / initialBalance) * 100).toFixed(2);
     return {
-      time: new Date(point.timestamp).toLocaleTimeString('zh-CN', {
+      time: new Date(point.timestamp).toLocaleTimeString('en-US', {
         hour: '2-digit',
         minute: '2-digit',
       }),
@@ -112,23 +112,23 @@ export function EquityChart({ traderId }: EquityChartProps) {
   const currentValue = chartData[chartData.length - 1];
   const isProfit = currentValue.raw_pnl >= 0;
 
-  // 计算Y轴范围
+  // Calculate Y-axis range
   const calculateYDomain = () => {
     if (displayMode === 'percent') {
-      // 百分比模式：找到最大最小值，留20%余量
+      // Percentage mode: find min/max, leave 20% margin
       const values = chartData.map(d => d.value);
       const minVal = Math.min(...values);
       const maxVal = Math.max(...values);
       const range = Math.max(Math.abs(maxVal), Math.abs(minVal));
-      const padding = Math.max(range * 0.2, 1); // 至少留1%余量
+      const padding = Math.max(range * 0.2, 1); // Leave at least 1% margin
       return [Math.floor(minVal - padding), Math.ceil(maxVal + padding)];
     } else {
-      // 美元模式：以初始余额为基准，上下留10%余量
+      // Dollar mode: use initial balance as baseline, leave 10% margin above/below
       const values = chartData.map(d => d.value);
       const minVal = Math.min(...values, initialBalance);
       const maxVal = Math.max(...values, initialBalance);
       const range = maxVal - minVal;
-      const padding = Math.max(range * 0.15, initialBalance * 0.01); // 至少留1%余量
+      const padding = Math.max(range * 0.15, initialBalance * 0.01); // Leave at least 1% margin
       return [
         Math.floor(minVal - padding),
         Math.ceil(maxVal + padding)
@@ -136,7 +136,7 @@ export function EquityChart({ traderId }: EquityChartProps) {
     }
   };
 
-  // 自定义Tooltip - Binance Style
+  // Custom Tooltip - Binance Style
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;

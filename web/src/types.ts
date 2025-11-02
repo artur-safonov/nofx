@@ -84,7 +84,7 @@ export interface Statistics {
   total_close_positions: number;
 }
 
-// 新增：竞赛相关类型
+// New: Competition-related types
 export interface TraderInfo {
   trader_id: string;
   trader_name: string;

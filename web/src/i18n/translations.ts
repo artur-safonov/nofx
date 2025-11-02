@@ -118,6 +118,49 @@ export const translations = {
     loading: 'Loading...',
     loadingError: '⚠️ Failed to load AI learning data',
     noCompleteData: 'No complete trading data (needs to complete open → close cycle)',
+
+    // Account State
+    equityLabel: 'Equity',
+    availableLabel: 'Available',
+    marginRateLabel: 'Margin Rate',
+    positionsLabel: 'Positions',
+    successChar: 'Success',
+
+    // Sharpe Ratio
+    sharpeRatio: 'Sharpe Ratio',
+    sharpeRatioDesc: 'Risk-adjusted returns · AI self-evolution indicator',
+    sharpeExcellent: '🟢 Excellent Performance',
+    sharpeGood: '🟢 Good Performance',
+    sharpeVolatile: '🟡 High Volatility',
+    sharpeAdjust: '🔴 Needs Adjustment',
+    sharpeMsg2: '✨ AI strategy is very effective! Excellent risk-adjusted returns, can moderately increase position size but maintain discipline.',
+    sharpeMsg1: '✅ Strategy performance is stable with good risk-return balance, continue current strategy.',
+    sharpeMsg0: '⚠️ Returns are positive but volatility is high, AI is optimizing strategy to reduce risk.',
+    sharpeMsgNeg: '🚨 Current strategy needs adjustment! AI has automatically entered conservative mode, reducing position size and trading frequency.',
+
+    // Profit Factor
+    profitFactorMsg2: '🔥 Outstanding profitability! For every 1 unit lost, {factor} units can be earned. AI strategy performs excellently.',
+    profitFactorMsg1: '✓ Strategy is consistently profitable with healthy profit factor, maintain disciplined trading.',
+    profitFactorMsg0: '⚠️ Strategy has slight profit but needs optimization, AI is adjusting position size and stop-loss strategy.',
+    profitFactorMsgLow: '❌ Average loss exceeds profit, need to adjust strategy or reduce trading frequency.',
+
+    // Comparison Chart
+    comparisonMode: 'Comparison Mode',
+    dataPoints: 'Data Points',
+    currentGap: 'Current Gap',
+    displayRangeLabel: 'Display Range',
+    recentLabel: 'Recent',
+    noHistoryData: 'No Historical Data',
+    willShowComparison: 'Comparison curves will appear after running a few cycles',
+    dataPointsUnit: 'points',
+
+    // Duration Format
+    hours: 'hours',
+    minutes: 'minutes',
+    seconds: 'seconds',
+    hour: 'hour',
+    minute: 'minute',
+    second: 'second',
   },
   zh: {
     // Header
@@ -236,6 +279,49 @@ export const translations = {
     loading: '加载中...',
     loadingError: '⚠️ 加载AI学习数据失败',
     noCompleteData: '暂无完整交易数据（需要完成开仓→平仓的完整周期）',
+
+    // Account State
+    equityLabel: '净值',
+    availableLabel: '可用',
+    marginRateLabel: '保证金率',
+    positionsLabel: '持仓',
+    successChar: '成功',
+
+    // Sharpe Ratio
+    sharpeRatio: '夏普比率',
+    sharpeRatioDesc: '风险调整后收益 · AI自我进化指标',
+    sharpeExcellent: '🟢 卓越表现',
+    sharpeGood: '🟢 良好表现',
+    sharpeVolatile: '🟡 波动较大',
+    sharpeAdjust: '🔴 需要调整',
+    sharpeMsg2: '✨ AI策略非常有效！风险调整后收益优异，可适度扩大仓位但保持纪律。',
+    sharpeMsg1: '✅ 策略表现稳健，风险收益平衡良好，继续保持当前策略。',
+    sharpeMsg0: '⚠️ 收益为正但波动较大，AI正在优化策略，降低风险。',
+    sharpeMsgNeg: '🚨 当前策略需要调整！AI已自动进入保守模式，减少仓位和交易频率。',
+
+    // Profit Factor
+    profitFactorMsg2: '🔥 盈利能力出色！每亏1元能赚{factor}元，AI策略表现优异。',
+    profitFactorMsg1: '✓ 策略稳定盈利，盈亏比健康，继续保持纪律性交易。',
+    profitFactorMsg0: '⚠️ 策略略有盈利但需优化，AI正在调整仓位和止损策略。',
+    profitFactorMsgLow: '❌ 平均亏损大于盈利，需要调整策略或降低交易频率。',
+
+    // Comparison Chart
+    comparisonMode: '对比模式',
+    dataPoints: '数据点数',
+    currentGap: '当前差距',
+    displayRangeLabel: '显示范围',
+    recentLabel: '最近',
+    noHistoryData: '暂无历史数据',
+    willShowComparison: '运行几个周期后将显示对比曲线',
+    dataPointsUnit: '个',
+
+    // Duration Format
+    hours: '小时',
+    minutes: '分钟',
+    seconds: '秒',
+    hour: '小时',
+    minute: '分钟',
+    second: '秒',
   }
 };
 
