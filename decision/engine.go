@@ -13,17 +13,22 @@ import (
 
 // PositionInfo Position information
 type PositionInfo struct {
-	Symbol           string  `json:"symbol"`
-	Side             string  `json:"side"` // "long" or "short"
-	EntryPrice       float64 `json:"entry_price"`
-	MarkPrice        float64 `json:"mark_price"`
-	Quantity         float64 `json:"quantity"`
-	Leverage         int     `json:"leverage"`
-	UnrealizedPnL    float64 `json:"unrealized_pnl"`
-	UnrealizedPnLPct float64 `json:"unrealized_pnl_pct"`
-	LiquidationPrice float64 `json:"liquidation_price"`
-	MarginUsed       float64 `json:"margin_used"`
-	UpdateTime       int64   `json:"update_time"` // Position update timestamp (milliseconds)
+	Symbol                string  `json:"symbol"`
+	Side                  string  `json:"side"` // "long" or "short"
+	EntryPrice            float64 `json:"entry_price"`
+	MarkPrice             float64 `json:"mark_price"`
+	Quantity              float64 `json:"quantity"`
+	Leverage              int     `json:"leverage"`
+	UnrealizedPnL         float64 `json:"unrealized_pnl"`
+	UnrealizedPnLPct      float64 `json:"unrealized_pnl_pct"`
+	LiquidationPrice      float64 `json:"liquidation_price"`
+	MarginUsed            float64 `json:"margin_used"`
+	UpdateTime            int64   `json:"update_time"` // Position update timestamp (milliseconds)
+	StopLoss              float64 `json:"stop_loss,omitempty"`
+	TakeProfit            float64 `json:"take_profit,omitempty"`
+	InvalidationCondition string  `json:"invalidation_condition,omitempty"`
+	Confidence            int     `json:"confidence,omitempty"` // 0-100
+	RiskUSD               float64 `json:"risk_usd,omitempty"`
 }
 
 // AccountInfo Account information
@@ -400,19 +405,32 @@ func buildUserPrompt(ctx *Context) string {
 	sb.WriteString(fmt.Sprintf("Current Account Value: %.2f\n\n", ctx.Account.TotalEquity))
 	sb.WriteString(fmt.Sprintf("Current live positions & performance:\n\n"))
 
-	// Positions with exit plan structure
+	// Positions with exit plan
 	if len(ctx.Positions) > 0 {
 		for _, pos := range ctx.Positions {
-			sb.WriteString(fmt.Sprintf("{'symbol': '%s', 'quantity': %.2f, 'entry_price': %.2f, 'current_price': %.2f, 'liquidation_price': %.2f, 'unrealized_pnl': %.2f, 'leverage': %d",
-				pos.Symbol, pos.Quantity, pos.EntryPrice, pos.MarkPrice, pos.LiquidationPrice, pos.UnrealizedPnL, pos.Leverage))
-			
-			// Exit plan structure (Note: exit_plan fields need to be added to PositionInfo struct in future)
-			// For now, showing structure - these would come from stored position exit plans
-			sb.WriteString(fmt.Sprintf(", 'exit_plan': {'profit_target': <price>, 'stop_loss': <price>, 'invalidation_condition': '<specific condition>'}, 'confidence': <0-1>, 'risk_usd': %.2f",
-				pos.MarginUsed))
-			
 			// Calculate notional USD
 			notionalUSD := pos.Quantity * pos.MarkPrice
+			
+			sb.WriteString(fmt.Sprintf("{'symbol': '%s', 'quantity': %.2f, 'entry_price': %.2f, 'current_price': %.2f, 'liquidation_price': %.2f, 'unrealized_pnl': %.2f, 'leverage': %d, 'side': '%s'",
+				pos.Symbol, pos.Quantity, pos.EntryPrice, pos.MarkPrice, pos.LiquidationPrice, pos.UnrealizedPnL, pos.Leverage, pos.Side))
+			
+			// Add exit plan if available
+			if pos.StopLoss > 0 || pos.TakeProfit > 0 || pos.InvalidationCondition != "" {
+				sb.WriteString(fmt.Sprintf(", 'exit_plan': {'profit_target': %.2f, 'stop_loss': %.2f, 'invalidation_condition': '%s'}",
+					pos.TakeProfit, pos.StopLoss, pos.InvalidationCondition))
+			}
+			
+			// Add confidence and risk if available
+			if pos.Confidence > 0 {
+				// Convert confidence from 0-100 to 0-1 scale for display
+				confidence01 := float64(pos.Confidence) / 100.0
+				sb.WriteString(fmt.Sprintf(", 'confidence': %.2f", confidence01))
+			}
+			
+			if pos.RiskUSD > 0 {
+				sb.WriteString(fmt.Sprintf(", 'risk_usd': %.2f", pos.RiskUSD))
+			}
+			
 			sb.WriteString(fmt.Sprintf(", 'notional_usd': %.2f}\n\n", notionalUSD))
 		}
 	} else {

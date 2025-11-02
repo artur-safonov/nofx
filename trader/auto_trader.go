@@ -83,6 +83,7 @@ type AutoTrader struct {
 	startTime             time.Time        // 系统启动时间
 	callCount             int              // AI调用次数
 	positionFirstSeenTime map[string]int64 // 持仓首次出现时间 (symbol_side -> timestamp毫秒)
+	positionExitPlans     map[string]*decision.PositionInfo // 持仓退出计划信息 (symbol_side -> PositionInfo)
 }
 
 // NewAutoTrader 创建自动交易器
@@ -177,6 +178,7 @@ func NewAutoTrader(config AutoTraderConfig) (*AutoTrader, error) {
 		callCount:             0,
 		isRunning:             false,
 		positionFirstSeenTime: make(map[string]int64),
+		positionExitPlans:     make(map[string]*decision.PositionInfo),
 	}, nil
 }
 
@@ -452,7 +454,13 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 		}
 		updateTime := at.positionFirstSeenTime[posKey]
 
-		positionInfos = append(positionInfos, decision.PositionInfo{
+		// Load exit plan info if stored
+		var exitPlanInfo *decision.PositionInfo
+		if stored, exists := at.positionExitPlans[posKey]; exists {
+			exitPlanInfo = stored
+		}
+
+		posInfo := decision.PositionInfo{
 			Symbol:           symbol,
 			Side:             side,
 			EntryPrice:       entryPrice,
@@ -464,13 +472,25 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 			LiquidationPrice: liquidationPrice,
 			MarginUsed:       marginUsed,
 			UpdateTime:       updateTime,
-		})
+		}
+
+		// Copy exit plan info if available
+		if exitPlanInfo != nil {
+			posInfo.StopLoss = exitPlanInfo.StopLoss
+			posInfo.TakeProfit = exitPlanInfo.TakeProfit
+			posInfo.InvalidationCondition = exitPlanInfo.InvalidationCondition
+			posInfo.Confidence = exitPlanInfo.Confidence
+			posInfo.RiskUSD = exitPlanInfo.RiskUSD
+		}
+
+		positionInfos = append(positionInfos, posInfo)
 	}
 
 	// 清理已平仓的持仓记录
 	for key := range at.positionFirstSeenTime {
 		if !currentPositionKeys[key] {
 			delete(at.positionFirstSeenTime, key)
+			delete(at.positionExitPlans, key)
 		}
 	}
 
@@ -563,32 +583,32 @@ func (at *AutoTrader) executeDecisionWithRecord(decision *decision.Decision, act
 }
 
 // executeOpenLongWithRecord Execute open long position and record detailed information
-func (at *AutoTrader) executeOpenLongWithRecord(decision *decision.Decision, actionRecord *logger.DecisionAction) error {
-	log.Printf("  📈 Open long: %s", decision.Symbol)
+func (at *AutoTrader) executeOpenLongWithRecord(dec *decision.Decision, actionRecord *logger.DecisionAction) error {
+	log.Printf("  📈 Open long: %s", dec.Symbol)
 
 	// ⚠️ Critical: Check if there's already a position in the same direction for this symbol, reject if found (prevent position stacking overflow)
 	positions, err := at.trader.GetPositions()
 	if err == nil {
 		for _, pos := range positions {
-			if pos["symbol"] == decision.Symbol && pos["side"] == "long" {
-				return fmt.Errorf("❌ %s already has long position, rejecting open to prevent position stacking overflow. To switch positions, first provide close_long decision", decision.Symbol)
+			if pos["symbol"] == dec.Symbol && pos["side"] == "long" {
+				return fmt.Errorf("❌ %s already has long position, rejecting open to prevent position stacking overflow. To switch positions, first provide close_long decision", dec.Symbol)
 			}
 		}
 	}
 
 	// Get current price
-	marketData, err := market.Get(decision.Symbol)
+	marketData, err := market.Get(dec.Symbol)
 	if err != nil {
 		return err
 	}
 
 	// Calculate quantity
-	quantity := decision.PositionSizeUSD / marketData.CurrentPrice
+	quantity := dec.PositionSizeUSD / marketData.CurrentPrice
 	actionRecord.Quantity = quantity
 	actionRecord.Price = marketData.CurrentPrice
 
 	// Open position
-	order, err := at.trader.OpenLong(decision.Symbol, quantity, decision.Leverage)
+	order, err := at.trader.OpenLong(dec.Symbol, quantity, dec.Leverage)
 	if err != nil {
 		return err
 	}
@@ -601,14 +621,23 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *decision.Decision, act
 	log.Printf("  ✓ Position opened successfully, Order ID: %v, Quantity: %.4f", order["orderId"], quantity)
 
 	// Record position open time
-	posKey := decision.Symbol + "_long"
+	posKey := dec.Symbol + "_long"
 	at.positionFirstSeenTime[posKey] = time.Now().UnixMilli()
 
+	// Store exit plan info
+	at.positionExitPlans[posKey] = &decision.PositionInfo{
+		StopLoss:              dec.StopLoss,
+		TakeProfit:            dec.TakeProfit,
+		InvalidationCondition: dec.InvalidationCondition,
+		Confidence:            dec.Confidence,
+		RiskUSD:               dec.RiskUSD,
+	}
+
 	// Set stop loss and take profit
-	if err := at.trader.SetStopLoss(decision.Symbol, "LONG", quantity, decision.StopLoss); err != nil {
+	if err := at.trader.SetStopLoss(dec.Symbol, "LONG", quantity, dec.StopLoss); err != nil {
 		log.Printf("  ⚠ Failed to set stop loss: %v", err)
 	}
-	if err := at.trader.SetTakeProfit(decision.Symbol, "LONG", quantity, decision.TakeProfit); err != nil {
+	if err := at.trader.SetTakeProfit(dec.Symbol, "LONG", quantity, dec.TakeProfit); err != nil {
 		log.Printf("  ⚠ Failed to set take profit: %v", err)
 	}
 
@@ -616,32 +645,32 @@ func (at *AutoTrader) executeOpenLongWithRecord(decision *decision.Decision, act
 }
 
 // executeOpenShortWithRecord Execute open short position and record detailed information
-func (at *AutoTrader) executeOpenShortWithRecord(decision *decision.Decision, actionRecord *logger.DecisionAction) error {
-	log.Printf("  📉 Open short: %s", decision.Symbol)
+func (at *AutoTrader) executeOpenShortWithRecord(dec *decision.Decision, actionRecord *logger.DecisionAction) error {
+	log.Printf("  📉 Open short: %s", dec.Symbol)
 
 	// ⚠️ Critical: Check if there's already a position in the same direction for this symbol, reject if found (prevent position stacking overflow)
 	positions, err := at.trader.GetPositions()
 	if err == nil {
 		for _, pos := range positions {
-			if pos["symbol"] == decision.Symbol && pos["side"] == "short" {
-				return fmt.Errorf("❌ %s already has short position, rejecting open to prevent position stacking overflow. To switch positions, first provide close_short decision", decision.Symbol)
+			if pos["symbol"] == dec.Symbol && pos["side"] == "short" {
+				return fmt.Errorf("❌ %s already has short position, rejecting open to prevent position stacking overflow. To switch positions, first provide close_short decision", dec.Symbol)
 			}
 		}
 	}
 
 	// Get current price
-	marketData, err := market.Get(decision.Symbol)
+	marketData, err := market.Get(dec.Symbol)
 	if err != nil {
 		return err
 	}
 
 	// Calculate quantity
-	quantity := decision.PositionSizeUSD / marketData.CurrentPrice
+	quantity := dec.PositionSizeUSD / marketData.CurrentPrice
 	actionRecord.Quantity = quantity
 	actionRecord.Price = marketData.CurrentPrice
 
 	// Open position
-	order, err := at.trader.OpenShort(decision.Symbol, quantity, decision.Leverage)
+	order, err := at.trader.OpenShort(dec.Symbol, quantity, dec.Leverage)
 	if err != nil {
 		return err
 	}
@@ -654,14 +683,23 @@ func (at *AutoTrader) executeOpenShortWithRecord(decision *decision.Decision, ac
 	log.Printf("  ✓ Position opened successfully, Order ID: %v, Quantity: %.4f", order["orderId"], quantity)
 
 	// Record position open time
-	posKey := decision.Symbol + "_short"
+	posKey := dec.Symbol + "_short"
 	at.positionFirstSeenTime[posKey] = time.Now().UnixMilli()
 
+	// Store exit plan info
+	at.positionExitPlans[posKey] = &decision.PositionInfo{
+		StopLoss:              dec.StopLoss,
+		TakeProfit:            dec.TakeProfit,
+		InvalidationCondition: dec.InvalidationCondition,
+		Confidence:            dec.Confidence,
+		RiskUSD:               dec.RiskUSD,
+	}
+
 	// Set stop loss and take profit
-	if err := at.trader.SetStopLoss(decision.Symbol, "SHORT", quantity, decision.StopLoss); err != nil {
+	if err := at.trader.SetStopLoss(dec.Symbol, "SHORT", quantity, dec.StopLoss); err != nil {
 		log.Printf("  ⚠ Failed to set stop loss: %v", err)
 	}
-	if err := at.trader.SetTakeProfit(decision.Symbol, "SHORT", quantity, decision.TakeProfit); err != nil {
+	if err := at.trader.SetTakeProfit(dec.Symbol, "SHORT", quantity, dec.TakeProfit); err != nil {
 		log.Printf("  ⚠ Failed to set take profit: %v", err)
 	}
 
