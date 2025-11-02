@@ -349,103 +349,88 @@ func buildUserPrompt(ctx *Context) string {
 	var sb strings.Builder
 
 	// System status
-	sb.WriteString(fmt.Sprintf("**Time**: %s | **Cycle**: #%d | **Runtime**: %d minutes\n\n",
-		ctx.CurrentTime, ctx.CallCount, ctx.RuntimeMinutes))
+	sb.WriteString(fmt.Sprintf("It has been %d minutes since you started trading. The current time is %s and you've been invoked %d times. Below, we are providing you with a variety of state data, price data, and predictive signals so you can discover alpha. Below that is your current account information, value, performance, positions, etc.\n\n",
+		ctx.RuntimeMinutes, ctx.CurrentTime, ctx.CallCount))
 
-	// BTC market
-	if btcData, hasBTC := ctx.MarketDataMap["BTCUSDT"]; hasBTC {
-		sb.WriteString(fmt.Sprintf("**BTC**: %.2f (1h: %+.2f%%, 4h: %+.2f%%) | MACD: %.4f | RSI: %.2f\n\n",
-			btcData.CurrentPrice, btcData.PriceChange1h, btcData.PriceChange4h,
-			btcData.CurrentMACD, btcData.CurrentRSI7))
-	}
+	// Explicit ordering statement
+	sb.WriteString("**ALL OF THE PRICE OR SIGNAL DATA BELOW IS ORDERED: OLDEST → NEWEST**\n\n")
+	sb.WriteString("**Timeframes note**: Unless stated otherwise in a section title, intraday series are provided at 3‑minute intervals. If a coin uses a different interval, it is explicitly stated in that coin's section.\n\n")
 
-	// Account
-	sb.WriteString(fmt.Sprintf("**Account**: Equity %.2f | Balance %.2f (%.1f%%) | P&L %+.2f%% | Margin %.1f%% | Positions %d\n\n",
-		ctx.Account.TotalEquity,
-		ctx.Account.AvailableBalance,
-		(ctx.Account.AvailableBalance/ctx.Account.TotalEquity)*100,
-		ctx.Account.TotalPnLPct,
-		ctx.Account.MarginUsedPct,
-		ctx.Account.PositionCount))
+	// Show all coins' market data upfront (equal treatment)
+	sb.WriteString("## CURRENT MARKET STATE FOR ALL COINS\n\n")
 	
-	// Position size limits (based on current account equity)
-	sb.WriteString(fmt.Sprintf("**Position Size Limits**: Altcoins %.0f-%.0f USDT (%dx leverage) | BTC/ETH %.0f-%.0f USDT (%dx leverage)\n\n",
-		ctx.Account.TotalEquity*0.8, ctx.Account.TotalEquity*1.5, ctx.AltcoinLeverage,
-		ctx.Account.TotalEquity*5, ctx.Account.TotalEquity*10, ctx.BTCETHLeverage))
-
-	// Positions (complete market data)
-	if len(ctx.Positions) > 0 {
-		sb.WriteString("## Current Positions\n")
-		for i, pos := range ctx.Positions {
-			// Calculate holding duration
-			holdingDuration := ""
-			if pos.UpdateTime > 0 {
-				durationMs := time.Now().UnixMilli() - pos.UpdateTime
-				durationMin := durationMs / (1000 * 60) // Convert to minutes
-				if durationMin < 60 {
-					holdingDuration = fmt.Sprintf(" | Holding duration: %d minutes", durationMin)
-				} else {
-					durationHour := durationMin / 60
-					durationMinRemainder := durationMin % 60
-					holdingDuration = fmt.Sprintf(" | Holding duration: %d hours %d minutes", durationHour, durationMinRemainder)
-				}
-			}
-
-			sb.WriteString(fmt.Sprintf("%d. %s %s | Entry %.4f Current %.4f | P&L %+.2f%% | Leverage %dx | Margin %.0f | Liq %.4f%s\n\n",
-				i+1, pos.Symbol, strings.ToUpper(pos.Side),
-				pos.EntryPrice, pos.MarkPrice, pos.UnrealizedPnLPct,
-				pos.Leverage, pos.MarginUsed, pos.LiquidationPrice, holdingDuration))
-
-			// Use FormatMarketData to output complete market data
-			if marketData, ok := ctx.MarketDataMap[pos.Symbol]; ok {
-				sb.WriteString(market.Format(marketData))
-				sb.WriteString("\n")
-			}
+	// Collect all symbols to display
+	allSymbols := make([]string, 0)
+	symbolSet := make(map[string]bool)
+	
+	// Add position symbols
+	for _, pos := range ctx.Positions {
+		if !symbolSet[pos.Symbol] {
+			allSymbols = append(allSymbols, pos.Symbol)
+			symbolSet[pos.Symbol] = true
 		}
-	} else {
-		sb.WriteString("**Current Positions**: None\n\n")
 	}
-
-	// Candidate coins (complete market data)
-	sb.WriteString(fmt.Sprintf("## Candidate Coins (%d)\n\n", len(ctx.MarketDataMap)))
-	displayedCount := 0
+	
+	// Add candidate coin symbols
 	for _, coin := range ctx.CandidateCoins {
-		marketData, hasData := ctx.MarketDataMap[coin.Symbol]
-		if !hasData {
+		if !symbolSet[coin.Symbol] && ctx.MarketDataMap[coin.Symbol] != nil {
+			allSymbols = append(allSymbols, coin.Symbol)
+			symbolSet[coin.Symbol] = true
+		}
+	}
+	
+	// Display all coins' data
+	for _, symbol := range allSymbols {
+		marketData := ctx.MarketDataMap[symbol]
+		if marketData == nil {
 			continue
 		}
-		displayedCount++
-
-		sourceTags := ""
-		if len(coin.Sources) > 1 {
-			sourceTags = " (AI500+OI_Top dual signal)"
-		} else if len(coin.Sources) == 1 && coin.Sources[0] == "oi_top" {
-			sourceTags = " (OI_Top open interest growth)"
-		}
-
-		// Use FormatMarketData to output complete market data
-		sb.WriteString(fmt.Sprintf("### %d. %s%s\n\n", displayedCount, coin.Symbol, sourceTags))
+		
+		// Get coin name (remove USDT suffix for display)
+		coinName := strings.Replace(symbol, "USDT", "", 1)
+		sb.WriteString(fmt.Sprintf("### ALL %s DATA\n\n", coinName))
 		sb.WriteString(market.Format(marketData))
 		sb.WriteString("\n")
 	}
-	sb.WriteString("\n")
 
-	// Sharpe Ratio (pass value directly, no complex formatting)
+	// Account information with Total Return %
+	sb.WriteString("## HERE IS YOUR ACCOUNT INFORMATION & PERFORMANCE\n\n")
+	sb.WriteString(fmt.Sprintf("Current Total Return (percent): %.2f%%\n\n", ctx.Account.TotalPnLPct))
+	sb.WriteString(fmt.Sprintf("Available Cash: %.2f\n\n", ctx.Account.AvailableBalance))
+	sb.WriteString(fmt.Sprintf("Current Account Value: %.2f\n\n", ctx.Account.TotalEquity))
+	sb.WriteString(fmt.Sprintf("Current live positions & performance:\n\n"))
+
+	// Positions with exit plan structure
+	if len(ctx.Positions) > 0 {
+		for _, pos := range ctx.Positions {
+			sb.WriteString(fmt.Sprintf("{'symbol': '%s', 'quantity': %.2f, 'entry_price': %.2f, 'current_price': %.2f, 'liquidation_price': %.2f, 'unrealized_pnl': %.2f, 'leverage': %d",
+				pos.Symbol, pos.Quantity, pos.EntryPrice, pos.MarkPrice, pos.LiquidationPrice, pos.UnrealizedPnL, pos.Leverage))
+			
+			// Exit plan structure (Note: exit_plan fields need to be added to PositionInfo struct in future)
+			// For now, showing structure - these would come from stored position exit plans
+			sb.WriteString(fmt.Sprintf(", 'exit_plan': {'profit_target': <price>, 'stop_loss': <price>, 'invalidation_condition': '<specific condition>'}, 'confidence': <0-1>, 'risk_usd': %.2f",
+				pos.MarginUsed))
+			
+			// Calculate notional USD
+			notionalUSD := pos.Quantity * pos.MarkPrice
+			sb.WriteString(fmt.Sprintf(", 'notional_usd': %.2f}\n\n", notionalUSD))
+		}
+	} else {
+		sb.WriteString("None\n\n")
+	}
+	
+	// Sharpe Ratio
 	if ctx.Performance != nil {
-		// Directly extract SharpeRatio from interface{}
 		type PerformanceData struct {
 			SharpeRatio float64 `json:"sharpe_ratio"`
 		}
 		var perfData PerformanceData
 		if jsonData, err := json.Marshal(ctx.Performance); err == nil {
 			if err := json.Unmarshal(jsonData, &perfData); err == nil {
-				sb.WriteString(fmt.Sprintf("## 📊 Sharpe Ratio: %.2f\n\n", perfData.SharpeRatio))
+				sb.WriteString(fmt.Sprintf("Sharpe Ratio: %.3f\n\n", perfData.SharpeRatio))
 			}
 		}
 	}
-
-	sb.WriteString("---\n\n")
-	sb.WriteString("Now please analyze and output your decision (Chain of Thought + JSON)\n")
 
 	return sb.String()
 }
